@@ -1,0 +1,109 @@
+services:
+  backend1:
+    build: ./backend
+    container_name: backend_server1
+    ports:
+      - "3001:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: always
+    volumes:
+      - ./backend:/usr/app
+      - /usr/app/node_modules
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    environment:
+      - SERVER_ID=Server 1
+      - MEMORY_LIMIT=256MB
+    networks:
+      - app-network
+
+  backend2:
+    build: ./backend
+    container_name: backend_server2
+    ports:
+      - "3002:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: always
+    volumes:
+      - ./backend:/usr/app
+      - /usr/app/node_modules
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+    environment:
+      - SERVER_ID=Server 2
+      - MEMORY_LIMIT=384MB
+    networks:
+      - app-network
+
+  backend3:
+    build: ./backend
+    container_name: backend_server3
+    ports:
+      - "3003:3000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: always
+    volumes:
+      - ./backend:/usr/app
+      - /usr/app/node_modules
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+    environment:
+      - SERVER_ID=Server 3
+      - MEMORY_LIMIT=512MB
+    networks:
+      - app-network
+
+  mysql:
+    image: mysql:8.0
+    container_name: mysql-db
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: load_balancer
+      MYSQL_PASSWORD: root
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    networks:
+      - app-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    image: nginx:latest
+    container_name: frontend_nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./frontend/public:/usr/share/nginx/html
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf
+    restart: unless-stopped
+    depends_on:
+      - backend1
+      - backend2
+      - backend3
+    networks:
+      - app-network
+
+volumes:
+  mysql_data:
+
+networks:
+  app-network:
+    driver: bridge
