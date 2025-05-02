@@ -4,6 +4,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const pageSubtitle = document.getElementById('pageSubtitle');
   const showPostsBtn = document.getElementById('showPostsBtn');
   const createPostBtn = document.getElementById('createPostBtn');
+  let currentPage = 1;
+  let totalPages = 1;
 
   const clearMainContent = () => {
     mainContent.innerHTML = '';
@@ -37,11 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const updateServerInfo = (serverId) => {
     currentServerId = serverId;
     const serverInfoElement = document.getElementById('serverInfo');
-    
+
     if (serverInfoElement) {
       serverInfoElement.textContent = `Servidor: ${serverId}`;
       serverInfoElement.classList.add('server-updated');
-      
+
       setTimeout(() => {
         serverInfoElement.classList.remove('server-updated');
       }, 1000);
@@ -54,28 +56,31 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const fetchPosts = async () => {
+  const fetchPosts = async (page = 1) => {
     try {
-      const response = await fetch("/api/posts");
+      const response = await fetch(`/api/posts?page=${page}`);
 
       if (!response.ok) {
         throw new Error(`Erro na requisição: ${response.status}`);
       }
 
       const data = await response.json();
-      
-      // Atualizar informação do servidor
+
       if (data.serverId) {
         updateServerInfo(data.serverId);
         currentServerId = data.serverId;
       }
-      
+
+      currentPage = data.page || 1;
+      totalPages = data.totalPages || 1;
+
       return data.posts || [];
     } catch (error) {
       console.error('Erro ao buscar posts:', error);
       throw error;
     }
   };
+
 
   const submitPost = async (postData) => {
     try {
@@ -92,13 +97,13 @@ document.addEventListener('DOMContentLoaded', () => {
       }
 
       const data = await response.json();
-      
+
       // Atualizar informação do servidor
       if (data.serverId) {
         updateServerInfo(data.serverId);
         currentServerId = data.serverId;
       }
-      
+
       return data;
     } catch (error) {
       console.error('Erro ao enviar post:', error);
@@ -106,14 +111,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  const renderPostsView = async () => {
+  const renderPostsView = async (page = 1) => {
     pageTitle.textContent = 'Meus Posts';
     pageSubtitle.textContent = 'Lista de conteúdos';
 
-    const loadingElement = showLoading();
+    showLoading();
 
     try {
-      const posts = await fetchPosts();
+      const posts = await fetchPosts(page);
       clearMainContent();
 
       const container = document.createElement('div');
@@ -146,9 +151,32 @@ document.addEventListener('DOMContentLoaded', () => {
         container.appendChild(card);
       });
 
+      renderPaginationControls();
+
     } catch (error) {
       showError(`Não foi possível carregar os posts: ${error.message}`);
     }
+  };
+
+  const renderPaginationControls = () => {
+    const pagination = document.createElement('div');
+    pagination.className = 'btn-container';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.textContent = '← Anterior';
+    prevBtn.className = 'btn btn-secondary';
+    prevBtn.disabled = currentPage === 1;
+    prevBtn.onclick = () => renderPostsView(currentPage - 1);
+
+    const nextBtn = document.createElement('button');
+    nextBtn.textContent = 'Próxima →';
+    nextBtn.className = 'btn btn-primary';
+    nextBtn.disabled = currentPage >= totalPages;
+    nextBtn.onclick = () => renderPostsView(currentPage + 1);
+
+    pagination.appendChild(prevBtn);
+    pagination.appendChild(nextBtn);
+    mainContent.appendChild(pagination);
   };
 
   const renderCreatePostView = () => {
@@ -252,14 +280,14 @@ document.addEventListener('DOMContentLoaded', () => {
         const result = await submitPost(postData);
 
         updateServerInfo(result.serverId);
-        
+
         statusContainer.innerHTML = '';
         statusContainer.appendChild(
           createStatusMessage(`Post criado com sucesso!`, true)
         );
 
         form.reset();
-        
+
         setTimeout(() => {
           renderPostsView();
         }, 1000);

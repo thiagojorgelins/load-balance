@@ -1,19 +1,68 @@
 const db = require('../database');
+const redisClient = require('../redisClient');
 
 exports.getAllPosts = async (req, res) => {
   try {
-    console.log(`\x1b[33m[${res.locals.serverId}] Solicitação de todos os posts\x1b[0m`);
+    const limit = 50;
+    const page = parseInt(req.query.page, 10) || 1;
 
-    const [rows] = await db.query('SELECT * FROM posts');
+    if (page < 1) {
+      return res.status(400).json({
+        serverId: res.locals.serverId,
+        error: 'Parâmetro "page" deve ser maior que 0'
+      });
+    }
 
-    console.log(`\x1b[32m[${res.locals.serverId}] Retornando ${rows.length} posts\x1b[0m`);
+    const offset = (page - 1) * limit;
+    const cacheKey = `posts:page:${page}`;
+
+    let totalPosts = await redisClient.get('posts:count');
+    totalPosts = parseInt(totalPosts, 10);
+
+    if (isNaN(totalPosts)) {
+      const [[{ count }]] = await db.query('SELECT COUNT(*) AS count FROM posts');
+      totalPosts = count;
+      await redisClient.set('posts:count', totalPosts);
+    }
+
+    const totalPages = Math.ceil(totalPosts / limit);
+
+    if (page === 1) {
+      const cachedPosts = await redisClient.get(cacheKey);
+      if (cachedPosts) {
+        return res.json({
+          serverId: res.locals.serverId,
+          posts: JSON.parse(cachedPosts),
+          page,
+          limit,
+          totalPosts,
+          totalPages,
+          cache: true
+        });
+      }
+    }
+
+    const [rows] = await db.query(
+      'SELECT * FROM posts ORDER BY id DESC LIMIT ? OFFSET ?',
+      [limit, offset]
+    );
+
+    if (page === 1) {
+      await redisClient.set(cacheKey, JSON.stringify(rows), { EX: 30 });
+    }
 
     res.json({
       serverId: res.locals.serverId,
-      posts: rows
+      posts: rows,
+      page,
+      limit,
+      totalPosts,
+      totalPages,
+      cache: false
     });
+
   } catch (error) {
-    console.error(`\x1b[31m[${res.locals.serverId}] Erro ao buscar posts:\x1b[0m`, error);
+    console.error('Erro ao buscar posts:', error);
     res.status(500).json({
       serverId: res.locals.serverId,
       error: 'Erro ao buscar posts'
@@ -24,8 +73,6 @@ exports.getAllPosts = async (req, res) => {
 exports.createPost = async (req, res) => {
   try {
     const { title, content } = req.body;
-
-    console.log(`\x1b[33m[${res.locals.serverId}] Criando novo post: "${title}"\x1b[0m`);
 
     if (!title || !content) {
       return res.status(400).json({
@@ -39,7 +86,8 @@ exports.createPost = async (req, res) => {
       [title, content]
     );
 
-    console.log(`\x1b[32m[${res.locals.serverId}] Post criado com ID: ${result.insertId}\x1b[0m`);
+    await redisClient.del('posts:page:1');
+    await redisClient.incr('posts:count');
 
     res.status(201).json({
       serverId: res.locals.serverId,
@@ -49,8 +97,9 @@ exports.createPost = async (req, res) => {
         content
       }
     });
+
   } catch (error) {
-    console.error(`\x1b[31m[${res.locals.serverId}] Erro ao criar post:\x1b[0m`, error);
+    console.error('Erro ao criar post:', error);
     res.status(500).json({
       serverId: res.locals.serverId,
       error: 'Erro ao criar post'
