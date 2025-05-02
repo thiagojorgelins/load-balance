@@ -6,7 +6,8 @@ const pool = mysql.createPool({
   password: 'root',
   database: 'load_balancer',
   waitForConnections: true,
-  queueLimit: 0
+  queueLimit: 0,
+  connectionLimit: 100,
 });
 
 async function initDatabase() {
